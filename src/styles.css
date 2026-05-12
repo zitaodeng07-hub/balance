@@ -1,0 +1,242 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: rgba(255, 255, 255, 0.96);
+  background:
+    radial-gradient(circle at top, rgba(52, 211, 153, 0.2), transparent 30%),
+    radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.25), transparent 24%),
+    linear-gradient(180deg, #020617 0%, #050816 45%, #0f172a 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 24px 16px 40px;
+  position: relative;
+}
+
+.aurora {
+  position: fixed;
+  inset: auto;
+  width: 34vw;
+  height: 34vw;
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.aurora-one {
+  top: -8vw;
+  left: -8vw;
+  background: #10b981;
+}
+
+.aurora-two {
+  right: -10vw;
+  bottom: 4vw;
+  background: #8b5cf6;
+}
+
+.phone-frame {
+  width: min(100%, 430px);
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.glass {
+  background: rgba(15, 23, 42, 0.68);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 20px 50px rgba(2, 6, 23, 0.35);
+  backdrop-filter: blur(18px);
+}
+
+.hero-card,
+.settings-card,
+.metric-card {
+  border-radius: 24px;
+}
+
+.hero-card {
+  padding: 20px;
+}
+
+.hero-top,
+.progress-meta,
+.section-title,
+.metric-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hero-top {
+  margin-bottom: 28px;
+}
+
+.badge {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #6ee7b7;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.muted,
+.hint,
+.subline {
+  color: rgba(226, 232, 240, 0.68);
+}
+
+.hero-amount {
+  text-align: center;
+  padding: 8px 0 18px;
+}
+
+.label {
+  font-size: 14px;
+  color: rgba(226, 232, 240, 0.75);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.amount {
+  margin-top: 12px;
+  font-size: clamp(42px, 10vw, 62px);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  background: linear-gradient(135deg, #f8fafc 0%, #86efac 42%, #fde68a 100%);
+  -webkit-background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 28px rgba(134, 239, 172, 0.15);
+}
+
+.subline {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.progress-wrap {
+  margin-top: 12px;
+}
+
+.progress-track {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22c55e 0%, #38bdf8 50%, #a78bfa 100%);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+  transition: width 220ms ease;
+}
+
+.progress-meta {
+  margin-top: 10px;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric-card {
+  padding: 16px;
+}
+
+.metric-title {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.7);
+  margin-bottom: 10px;
+}
+
+.metric-card strong {
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.settings-card {
+  padding: 18px;
+}
+
+.section-title {
+  font-size: 16px;
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+
+.form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+}
+
+label span {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.74);
+}
+
+input {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.72);
+  color: white;
+  border-radius: 16px;
+  padding: 14px 16px;
+  outline: none;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+input:focus {
+  border-color: rgba(110, 231, 183, 0.62);
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
+}
+
+.hint {
+  margin: 14px 0 0;
+  font-size: 13px;
+}
+
+@media (max-width: 420px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
