@@ -20,6 +20,7 @@ const STORAGE_KEY = 'balance-salary-profile-v2';
 const SESSION_KEY = 'balance-session-state-v2';
 const PREFERENCES_KEY = 'balance-preferences-v1';
 const DISPLAY_DIGITS = 3;
+const COIN_STEP = 0.05;
 const weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
 
 const defaultProfile: SalaryProfile = {
@@ -129,7 +130,7 @@ function BalanceApp() {
   const [silentMode, setSilentMode] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
-  const lastCoinCentRef = useRef(0);
+  const lastCoinStepRef = useRef(0);
   const coinIdRef = useRef(0);
   const audioContextRef = useRef<CoinAudioContext | null>(null);
 
@@ -227,22 +228,22 @@ function BalanceApp() {
       return;
     }
 
-    const currentCent = Math.floor(sessionIncome * 100);
-    if (currentCent <= lastCoinCentRef.current) {
+    const currentStep = Math.floor(sessionIncome / COIN_STEP);
+    if (currentStep <= lastCoinStepRef.current) {
       return;
     }
 
-    lastCoinCentRef.current = currentCent;
+    lastCoinStepRef.current = currentStep;
     const nextCoin: Coin = {
       id: coinIdRef.current += 1,
       left: 14 + Math.random() * 72,
-      delay: Math.random() * 0.25,
-      size: 18 + Math.random() * 12,
-      drift: -36 + Math.random() * 72,
+      delay: Math.random() * 0.12,
+      size: 16 + Math.random() * 8,
+      drift: -28 + Math.random() * 56,
     };
 
-    playCoinSound();
-    setCoins((current) => [...current.slice(-18), nextCoin]);
+    playCoinSound(false);
+    setCoins((current) => [...current.slice(-8), nextCoin]);
     window.setTimeout(() => {
       setCoins((current) => current.filter((coin) => coin.id !== nextCoin.id));
     }, 2200);
@@ -262,23 +263,32 @@ function BalanceApp() {
   function resetSession() {
     setPausedElapsed(0);
     setSessionStartedAt(Date.now());
-    lastCoinCentRef.current = 0;
+    lastCoinStepRef.current = 0;
     setCoins([]);
     setIsRunning(true);
   }
 
-  function playCoinSound() {
-    if (!soundEnabled || silentMode) {
-      return;
-    }
-
+  function getAudioContext() {
     const AudioContextCtor = window.AudioContext ?? window.webkitAudioContext;
     if (!AudioContextCtor) {
-      return;
+      return null;
     }
 
     const context = audioContextRef.current ?? new AudioContextCtor();
     audioContextRef.current = context;
+
+    return context;
+  }
+
+  function playCoinSound(force = false) {
+    if ((!soundEnabled && !force) || silentMode) {
+      return;
+    }
+
+    const context = getAudioContext();
+    if (!context) {
+      return;
+    }
 
     if (context.state === 'suspended') {
       void context.resume();
@@ -290,8 +300,8 @@ function BalanceApp() {
     const lowTone = context.createOscillator();
 
     gain.gain.setValueAtTime(0.0001, nowTime);
-    gain.gain.exponentialRampToValueAtTime(0.08, nowTime + 0.018);
-    gain.gain.exponentialRampToValueAtTime(0.0001, nowTime + 0.18);
+    gain.gain.exponentialRampToValueAtTime(force ? 0.16 : 0.11, nowTime + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.0001, nowTime + 0.22);
 
     highTone.type = 'triangle';
     highTone.frequency.setValueAtTime(1320, nowTime);
@@ -307,8 +317,14 @@ function BalanceApp() {
 
     highTone.start(nowTime);
     lowTone.start(nowTime + 0.035);
-    highTone.stop(nowTime + 0.18);
-    lowTone.stop(nowTime + 0.2);
+    highTone.stop(nowTime + 0.2);
+    lowTone.stop(nowTime + 0.24);
+  }
+
+  function testCoinSound() {
+    setSoundEnabled(true);
+    setSilentMode(false);
+    playCoinSound(true);
   }
 
   function setProfileValue<K extends keyof SalaryProfile>(key: K, value: SalaryProfile[K]) {
@@ -345,7 +361,7 @@ function BalanceApp() {
     setSoundEnabled(true);
     setSilentMode(false);
     setShowOnboarding(true);
-    lastCoinCentRef.current = 0;
+    lastCoinStepRef.current = 0;
   }
 
   return (
@@ -416,6 +432,7 @@ function BalanceApp() {
           <button className={silentMode ? 'active' : ''} onClick={() => setSilentMode((current) => !current)}>
             静音模式 {silentMode ? '开' : '关'}
           </button>
+          <button onClick={testCoinSound}>测试音效</button>
         </section>
 
         <section className="metric-strip">

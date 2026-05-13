@@ -131,6 +131,8 @@ select:focus {
   z-index: 2;
   pointer-events: none;
   overflow: hidden;
+  contain: layout paint style;
+  transform: translateZ(0);
 }
 
 .falling-coin {
@@ -138,25 +140,25 @@ select:focus {
   top: -44px;
   display: grid;
   place-items: center;
-  border: 2px solid #fff3a8;
+  border: 1px solid #fff3a8;
   border-radius: 999px;
   background:
     radial-gradient(circle at 35% 30%, #fff8c9 0 16%, transparent 17%),
     linear-gradient(135deg, #fff07a 0%, #f6b73c 48%, #d98416 100%);
-  box-shadow:
-    0 0 16px rgba(255, 218, 82, 0.55),
-    inset 0 -3px 6px rgba(130, 72, 10, 0.25);
+  box-shadow: 0 0 8px rgba(255, 218, 82, 0.42);
+  contain: layout paint style;
   color: #7a3f00;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 900;
   line-height: 1;
-  animation: coin-drop 1.9s cubic-bezier(0.16, 0.84, 0.34, 1) forwards;
-  will-change: transform, opacity;
+  transform: translate3d(0, -28px, 0) rotateZ(-18deg) scale(0.72);
+  animation: coin-drop 1.45s cubic-bezier(0.18, 0.86, 0.28, 1) forwards;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 @keyframes coin-drop {
   0% {
-    opacity: 0;
     transform: translate3d(0, -28px, 0) rotateY(0deg) rotateZ(-18deg) scale(0.72);
   }
 
@@ -170,7 +172,7 @@ select:focus {
 
   100% {
     opacity: 0;
-    transform: translate3d(var(--coin-drift), 74vh, 0) rotateY(720deg) rotateZ(42deg) scale(1.08);
+    transform: translate3d(var(--coin-drift), 72vh, 0) rotateY(540deg) rotateZ(42deg) scale(1.04);
   }
 }
 
