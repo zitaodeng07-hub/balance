@@ -9,6 +9,7 @@ type CoinAudioContext = AudioContext;
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext;
+    __balanceLog?: (message: string) => void;
   }
 }
 
@@ -90,6 +91,7 @@ export default function App() {
 }
 
 function BalanceApp() {
+  window.__balanceLog?.('app-render-start');
   const [profile, setProfile] = useState<SalaryProfile>(defaultProfile);
   const [theme, setTheme] = useState<Theme>('neon');
   const [now, setNow] = useState(() => new Date());
