@@ -10,9 +10,11 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 );
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      // PWA caching is optional; the app still works if registration is blocked.
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => {
+      registration.unregister();
     });
+  }).catch(() => {
+    // PWA caching is optional; the app should never fail because of service workers.
   });
 }
