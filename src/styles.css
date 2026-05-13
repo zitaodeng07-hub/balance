@@ -193,6 +193,7 @@ select:focus {
 
 .topbar,
 .quick-controls,
+.install-tip,
 .hero,
 .motivation,
 .settings {
@@ -429,6 +430,13 @@ h2 {
   font-size: 12px;
 }
 
+.install-tip {
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 13px;
+  line-height: 1.6;
+  background: linear-gradient(135deg, rgba(103, 255, 208, 0.12), rgba(167, 139, 250, 0.1));
+}
+
 .section-heading {
   align-items: flex-start;
   margin-bottom: 16px;
@@ -532,6 +540,17 @@ label span,
   text-align: center;
 }
 
+.debug-link {
+  justify-self: center;
+  color: rgba(148, 163, 184, 0.5);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.debug-link:active {
+  color: rgba(226, 232, 240, 0.8);
+}
+
 .onboarding-backdrop {
   position: fixed;
   inset: 0;
@@ -610,6 +629,7 @@ label span,
   }
 
   .topbar,
+  .install-tip,
   .hero,
   .motivation,
   .settings {

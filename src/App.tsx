@@ -9,7 +9,10 @@ type CoinAudioContext = AudioContext;
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext;
-    __balanceLog?: (message: string) => void;
+  }
+
+  interface Navigator {
+    standalone?: boolean;
   }
 }
 
@@ -115,7 +118,6 @@ export default function App() {
 }
 
 function BalanceApp() {
-  window.__balanceLog?.('app-render-start');
   const [profile, setProfile] = useState<SalaryProfile>(defaultProfile);
   const [theme, setTheme] = useState<Theme>('neon');
   const [now, setNow] = useState(() => new Date());
@@ -126,11 +128,14 @@ function BalanceApp() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [silentMode, setSilentMode] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
   const lastCoinCentRef = useRef(0);
   const coinIdRef = useRef(0);
   const audioContextRef = useRef<CoinAudioContext | null>(null);
 
   useEffect(() => {
+    setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
+
     const stored = readStoredValue(STORAGE_KEY);
     const session = readStoredValue(SESSION_KEY);
     const preferences = readStoredValue(PREFERENCES_KEY);
@@ -371,17 +376,8 @@ function BalanceApp() {
             <p className="eyebrow">Balance</p>
             <h1>收入即时可视化</h1>
           </div>
-          <span className="status-pill">离线优先 · 本地保存</span>
+          <span className="status-pill">{isStandalone ? '主屏幕模式' : 'Safari 模式'}</span>
         </header>
-
-        <section className="quick-controls panel" aria-label="快捷设置">
-          <button className={soundEnabled ? 'active' : ''} onClick={() => setSoundEnabled((current) => !current)}>
-            金币音效 {soundEnabled ? '开' : '关'}
-          </button>
-          <button className={silentMode ? 'active' : ''} onClick={() => setSilentMode((current) => !current)}>
-            静音模式 {silentMode ? '开' : '关'}
-          </button>
-        </section>
 
         <section className="hero panel">
           <div className="hero-meta">
@@ -405,6 +401,21 @@ function BalanceApp() {
             <button className="primary-action" onClick={toggleRunning}>{isRunning ? '暂停专注' : '继续专注'}</button>
             <button className="ghost-action" onClick={resetSession}>重置会话</button>
           </div>
+        </section>
+
+        {!isStandalone && (
+          <section className="install-tip panel">
+            <span>想像 App 一样使用？Safari 分享按钮 → 添加到主屏幕。</span>
+          </section>
+        )}
+
+        <section className="quick-controls panel" aria-label="快捷设置">
+          <button className={soundEnabled ? 'active' : ''} onClick={() => setSoundEnabled((current) => !current)}>
+            金币音效 {soundEnabled ? '开' : '关'}
+          </button>
+          <button className={silentMode ? 'active' : ''} onClick={() => setSilentMode((current) => !current)}>
+            静音模式 {silentMode ? '开' : '关'}
+          </button>
         </section>
 
         <section className="metric-strip">
@@ -546,6 +557,7 @@ function BalanceApp() {
         </section>
 
         <p className="disclaimer">金额仅用于个人收入可视化估算，不替代工资单、税务申报或公司结算结果。</p>
+        <a className="debug-link" href="./debug.html">诊断</a>
       </main>
 
       {showOnboarding && (
