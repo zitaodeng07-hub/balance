@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import { Component, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { getSalaryMetrics, type CurrencyCode, type PayMode, type SalaryMode, type SalaryProfile } from './salary';
 
 type Theme = 'minimal' | 'neon' | 'glass';
@@ -42,12 +42,23 @@ const themeMeta: Record<Theme, { title: string; subtitle: string }> = {
 };
 
 function formatCurrency(value: number, currency: CurrencyCode, digits = 2) {
-  return new Intl.NumberFormat('zh-CN', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(value);
+  const symbol = currency === 'USD' ? '$' : '¥';
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  try {
+    if ('Intl' in window && Intl.NumberFormat) {
+      return new Intl.NumberFormat('zh-CN', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      }).format(safeValue);
+    }
+  } catch {
+    // Older iOS WebViews can have partial Intl support; fall back to a plain formatter.
+  }
+
+  return `${symbol}${safeValue.toFixed(digits)}`;
 }
 
 function formatDuration(milliseconds: number) {
@@ -71,6 +82,14 @@ function fromHourInput(value: string) {
 }
 
 export default function App() {
+  return (
+    <AppErrorBoundary>
+      <BalanceApp />
+    </AppErrorBoundary>
+  );
+}
+
+function BalanceApp() {
   const [profile, setProfile] = useState<SalaryProfile>(defaultProfile);
   const [theme, setTheme] = useState<Theme>('neon');
   const [now, setNow] = useState(() => new Date());
@@ -518,6 +537,33 @@ export default function App() {
       )}
     </div>
   );
+}
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="app-shell theme-neon">
+          <main className="phone-frame">
+            <section className="panel onboarding-card">
+              <p className="eyebrow">启动失败</p>
+              <h1>Balance 遇到兼容问题</h1>
+              <p className="tax-note">请清理 Safari 网站数据后刷新。如果仍失败，请把下面这行错误发给开发者：</p>
+              <p className="tax-note">{this.state.error.message}</p>
+            </section>
+          </main>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
