@@ -42,6 +42,30 @@ const themeMeta: Record<Theme, { title: string; subtitle: string }> = {
   glass: { title: '琉璃', subtitle: '轻量玻璃质感' },
 };
 
+function readStoredValue(key: string) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredValue(key: string, value: unknown) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage is optional; Safari private mode can reject writes.
+  }
+}
+
+function removeStoredValue(key: string) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore unavailable storage.
+  }
+}
+
 function formatCurrency(value: number, currency: CurrencyCode, digits = 2) {
   const symbol = currency === 'USD' ? '$' : '¥';
   const safeValue = Number.isFinite(value) ? value : 0;
@@ -107,15 +131,15 @@ function BalanceApp() {
   const audioContextRef = useRef<CoinAudioContext | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const session = localStorage.getItem(SESSION_KEY);
-    const preferences = localStorage.getItem(PREFERENCES_KEY);
+    const stored = readStoredValue(STORAGE_KEY);
+    const session = readStoredValue(SESSION_KEY);
+    const preferences = readStoredValue(PREFERENCES_KEY);
 
     if (stored) {
       try {
         setProfile((current) => ({ ...current, ...JSON.parse(stored) }));
       } catch {
-        localStorage.removeItem(STORAGE_KEY);
+        removeStoredValue(STORAGE_KEY);
       }
     }
 
@@ -127,7 +151,7 @@ function BalanceApp() {
         if (typeof parsed.sessionStartedAt === 'number') setSessionStartedAt(parsed.sessionStartedAt);
         if (typeof parsed.pausedElapsed === 'number') setPausedElapsed(parsed.pausedElapsed);
       } catch {
-        localStorage.removeItem(SESSION_KEY);
+        removeStoredValue(SESSION_KEY);
       }
     }
 
@@ -138,7 +162,7 @@ function BalanceApp() {
         if (typeof parsed.silentMode === 'boolean') setSilentMode(parsed.silentMode);
         setShowOnboarding(parsed.hasSeenOnboarding !== true);
       } catch {
-        localStorage.removeItem(PREFERENCES_KEY);
+        removeStoredValue(PREFERENCES_KEY);
         setShowOnboarding(true);
       }
     } else {
@@ -147,15 +171,15 @@ function BalanceApp() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+    writeStoredValue(STORAGE_KEY, profile);
   }, [profile]);
 
   useEffect(() => {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ theme, isRunning, sessionStartedAt, pausedElapsed }));
+    writeStoredValue(SESSION_KEY, { theme, isRunning, sessionStartedAt, pausedElapsed });
   }, [theme, isRunning, sessionStartedAt, pausedElapsed]);
 
   useEffect(() => {
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ soundEnabled, silentMode, hasSeenOnboarding: !showOnboarding }));
+    writeStoredValue(PREFERENCES_KEY, { soundEnabled, silentMode, hasSeenOnboarding: !showOnboarding });
   }, [soundEnabled, silentMode, showOnboarding]);
 
   useEffect(() => {
@@ -175,10 +199,12 @@ function BalanceApp() {
     };
 
     window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true });
     window.addEventListener('keydown', unlockAudio, { once: true });
 
     return () => {
       window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
       window.removeEventListener('keydown', unlockAudio);
     };
   }, []);
@@ -302,9 +328,9 @@ function BalanceApp() {
       return;
     }
 
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(PREFERENCES_KEY);
+    removeStoredValue(STORAGE_KEY);
+    removeStoredValue(SESSION_KEY);
+    removeStoredValue(PREFERENCES_KEY);
     setProfile(defaultProfile);
     setTheme('neon');
     setIsRunning(true);

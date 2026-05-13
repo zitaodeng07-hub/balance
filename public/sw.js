@@ -1,4 +1,4 @@
-const CACHE_NAME = 'balance-pwa-v3-disabled';
+const CACHE_NAME = 'balance-pwa-v4-disabled';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -9,8 +9,6 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
       .then(() => self.registration.unregister())
-      .then(() => self.clients.matchAll())
-      .then((clients) => clients.forEach((client) => client.navigate(client.url))),
   );
   self.clients.claim();
 });
