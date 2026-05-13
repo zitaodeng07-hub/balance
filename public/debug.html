@@ -36,14 +36,19 @@
   <body>
     <main class="card">
       <h1>Balance Safari 诊断页</h1>
-      <p>如果你能看到这一页，说明 Safari 能正常访问 Vercel 静态页面。</p>
+      <p>如果你能看到这一页，说明 Safari 能正常访问 GitHub Pages 静态页面。</p>
       <pre id="log">loading...</pre>
-      <p><a href="/?debug=1&v=4">打开应用诊断模式</a></p>
+      <p><a id="app-link" href="./?debug=1&v=6">打开应用诊断模式</a></p>
+      <p><button id="reset-sw" type="button">清理本页缓存和 Service Worker</button></p>
     </main>
     <script>
       var lines = [];
       function log(name, value) { lines.push(name + ': ' + value); }
+      var appUrl = new URL('./?debug=1&v=6', window.location.href);
+      document.getElementById('app-link').href = appUrl.href;
       log('time', new Date().toISOString());
+      log('location', window.location.href);
+      log('appLink', appUrl.href);
       log('userAgent', navigator.userAgent);
       log('standalone', navigator.standalone === true);
       log('localStorage', (function () { try { localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); return 'ok'; } catch (e) { return e.message; } })());
@@ -51,6 +56,26 @@
       log('AudioContext', !!(window.AudioContext || window.webkitAudioContext));
       log('moduleScript', 'noModule' in document.createElement('script'));
       document.getElementById('log').textContent = lines.join('\n');
+      document.getElementById('reset-sw').addEventListener('click', function () {
+        var tasks = [];
+        if ('serviceWorker' in navigator) {
+          tasks.push(navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            return Promise.all(registrations.map(function (registration) { return registration.unregister(); }));
+          }));
+        }
+        if ('caches' in window) {
+          tasks.push(caches.keys().then(function (keys) {
+            return Promise.all(keys.map(function (key) { return caches.delete(key); }));
+          }));
+        }
+        Promise.all(tasks).then(function () {
+          lines.push('reset: ok');
+          document.getElementById('log').textContent = lines.join('\n');
+        }).catch(function (error) {
+          lines.push('reset: ' + (error && error.message ? error.message : String(error)));
+          document.getElementById('log').textContent = lines.join('\n');
+        });
+      });
     </script>
   </body>
 </html>
