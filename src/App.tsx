@@ -112,6 +112,10 @@ function fromHourInput(value: string) {
   return Number(hour) + Number(minute) / 60;
 }
 
+function getAuthRedirectUrl() {
+  return new URL('./', window.location.href).href;
+}
+
 export default function App() {
   return (
     <AppErrorBoundary>
@@ -401,7 +405,12 @@ function BalanceApp() {
     const credentials = { email: authEmail.trim(), password: authPassword };
     const { data, error } = authMode === 'login'
       ? await supabase.auth.signInWithPassword(credentials)
-      : await supabase.auth.signUp(credentials);
+      : await supabase.auth.signUp({
+        ...credentials,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl(),
+        },
+      });
 
     if (error) {
       const message = error.message.toLowerCase();
