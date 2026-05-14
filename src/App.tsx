@@ -1,6 +1,8 @@
 import { Component, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { getSalaryMetrics, type CurrencyCode, type PayMode, type SalaryMode, type SalaryProfile } from './salary';
+import { isSupabaseConfigured, supabase } from './supabase';
 
 type Theme = 'minimal' | 'neon' | 'glass';
 type Coin = { id: number; left: number; delay: number; size: number; drift: number };
@@ -20,7 +22,7 @@ const STORAGE_KEY = 'balance-salary-profile-v2';
 const SESSION_KEY = 'balance-session-state-v2';
 const PREFERENCES_KEY = 'balance-preferences-v1';
 const DISPLAY_DIGITS = 3;
-const COIN_STEP = 0.05;
+const COIN_STEP = 0.02;
 const weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
 
 const defaultProfile: SalaryProfile = {
@@ -130,6 +132,12 @@ function BalanceApp() {
   const [silentMode, setSilentMode] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authMessage, setAuthMessage] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
   const lastCoinStepRef = useRef(0);
   const coinIdRef = useRef(0);
   const audioContextRef = useRef<CoinAudioContext | null>(null);
@@ -192,6 +200,29 @@ function BalanceApp() {
     const timer = window.setInterval(() => setNow(new Date()), isRunning ? 50 : 500);
     return () => window.clearInterval(timer);
   }, [isRunning]);
+
+  useEffect(() => {
+    if (!supabase) {
+      return undefined;
+    }
+
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active) {
+        setSession(data.session);
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthMessage('');
+    });
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const unlockAudio = () => {
@@ -295,30 +326,41 @@ function BalanceApp() {
     }
 
     const nowTime = context.currentTime;
-    const gain = context.createGain();
-    const highTone = context.createOscillator();
-    const lowTone = context.createOscillator();
+    const master = context.createGain();
+    const filter = context.createBiquadFilter();
 
-    gain.gain.setValueAtTime(0.0001, nowTime);
-    gain.gain.exponentialRampToValueAtTime(force ? 0.16 : 0.11, nowTime + 0.018);
-    gain.gain.exponentialRampToValueAtTime(0.0001, nowTime + 0.22);
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(900, nowTime);
+    master.gain.setValueAtTime(force ? 0.16 : 0.1, nowTime);
+    filter.connect(master);
+    master.connect(context.destination);
 
-    highTone.type = 'triangle';
-    highTone.frequency.setValueAtTime(1320, nowTime);
-    highTone.frequency.exponentialRampToValueAtTime(1880, nowTime + 0.12);
+    [0, 0.055, 0.115].forEach((offset, index) => {
+      const strikeTime = nowTime + offset;
+      const strikeGain = context.createGain();
+      const tone = context.createOscillator();
+      const overtone = context.createOscillator();
 
-    lowTone.type = 'sine';
-    lowTone.frequency.setValueAtTime(660, nowTime + 0.035);
-    lowTone.frequency.exponentialRampToValueAtTime(940, nowTime + 0.16);
+      strikeGain.gain.setValueAtTime(0.0001, strikeTime);
+      strikeGain.gain.exponentialRampToValueAtTime((force ? 0.22 : 0.14) / (index + 1), strikeTime + 0.006);
+      strikeGain.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.13);
 
-    highTone.connect(gain);
-    lowTone.connect(gain);
-    gain.connect(context.destination);
+      tone.type = 'triangle';
+      tone.frequency.setValueAtTime(1760 + index * 220, strikeTime);
+      tone.frequency.exponentialRampToValueAtTime(1280 + index * 180, strikeTime + 0.12);
 
-    highTone.start(nowTime);
-    lowTone.start(nowTime + 0.035);
-    highTone.stop(nowTime + 0.2);
-    lowTone.stop(nowTime + 0.24);
+      overtone.type = 'sine';
+      overtone.frequency.setValueAtTime(3520 + index * 260, strikeTime + 0.004);
+      overtone.frequency.exponentialRampToValueAtTime(2440 + index * 220, strikeTime + 0.11);
+
+      tone.connect(strikeGain);
+      overtone.connect(strikeGain);
+      strikeGain.connect(filter);
+      tone.start(strikeTime);
+      overtone.start(strikeTime + 0.004);
+      tone.stop(strikeTime + 0.14);
+      overtone.stop(strikeTime + 0.13);
+    });
   }
 
   function testCoinSound() {
@@ -343,8 +385,41 @@ function BalanceApp() {
     setShowOnboarding(false);
   }
 
+  async function handleAuthSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || authBusy) {
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthMessage('');
+    const credentials = { email: authEmail.trim(), password: authPassword };
+    const { error } = authMode === 'login'
+      ? await supabase.auth.signInWithPassword(credentials)
+      : await supabase.auth.signUp(credentials);
+
+    if (error) {
+      setAuthMessage(error.message);
+    } else {
+      setAuthMessage(authMode === 'login' ? '登录成功。' : '注册成功，请按 Supabase 邮件确认设置继续。');
+      setAuthPassword('');
+    }
+    setAuthBusy(false);
+  }
+
+  async function signOut() {
+    if (!supabase || authBusy) {
+      return;
+    }
+
+    setAuthBusy(true);
+    const { error } = await supabase.auth.signOut();
+    setAuthMessage(error ? error.message : '已退出登录。');
+    setAuthBusy(false);
+  }
+
   function clearLocalData() {
-    const confirmed = window.confirm('确定清空本地保存的工资、主题、专注状态和偏好吗？此操作不会影响任何云端数据，因为当前应用不上传数据。');
+    const confirmed = window.confirm('确定清空本地保存的工资、主题、专注状态和偏好吗？此操作不会影响 Supabase 账户。');
     if (!confirmed) {
       return;
     }
@@ -394,6 +469,36 @@ function BalanceApp() {
           </div>
           <span className="status-pill">{isStandalone ? '主屏幕模式' : 'Safari 模式'}</span>
         </header>
+
+        <section className="auth-panel panel">
+          <div className="auth-heading">
+            <div>
+              <p className="eyebrow">Account</p>
+              <h2>Supabase 登录</h2>
+            </div>
+            <span>{isSupabaseConfigured ? '可用' : '未配置'}</span>
+          </div>
+
+          {!isSupabaseConfigured ? (
+            <p className="auth-note">配置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY 后启用注册/登录；当前继续使用本地数据。</p>
+          ) : session ? (
+            <div className="auth-signed-in">
+              <span>{session.user.email}</span>
+              <button className="ghost-action" onClick={signOut} disabled={authBusy}>退出登录</button>
+            </div>
+          ) : (
+            <form className="auth-form" onSubmit={handleAuthSubmit}>
+              <div className="segmented auth-mode">
+                <button type="button" className={authMode === 'login' ? 'active' : ''} onClick={() => setAuthMode('login')}>登录</button>
+                <button type="button" className={authMode === 'signup' ? 'active' : ''} onClick={() => setAuthMode('signup')}>注册</button>
+              </div>
+              <input type="email" placeholder="邮箱" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
+              <input type="password" placeholder="密码（至少 6 位）" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} minLength={6} required />
+              <button className="primary-action" disabled={authBusy}>{authBusy ? '处理中...' : authMode === 'login' ? '登录' : '注册'}</button>
+            </form>
+          )}
+          {authMessage && <p className="auth-note">{authMessage}</p>}
+        </section>
 
         <section className="hero panel">
           <div className="hero-meta">
@@ -449,7 +554,7 @@ function BalanceApp() {
             <p>距离下一个 {formatCurrency(nextMilestone, profile.currency, 0)} 里程碑，预计还需要 {milestoneMinutes} 分钟。</p>
           </div>
           <div className="chip-row">
-            <span>不上传工资</span>
+              <span>{session ? '已登录账户' : '工资仍本地保存'}</span>
             <span>前台高频刷新</span>
             <span>后台恢复重算</span>
           </div>

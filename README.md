@@ -65,3 +65,26 @@ npm run preview
 - iOS 对 PWA 后台运行、通知、音频自动播放和后台高频计时有系统限制。
 - 金币音效需要用户先与页面交互后才会播放，这是浏览器策略。
 - 收入和个税金额仅用于个人估算和可视化，不替代工资单、税务申报或公司结算结果。
+
+## Supabase 登录配置
+
+项目已接入 Supabase Auth，但默认不包含真实密钥。要启用注册/登录，需要：
+
+1. 在 Supabase 创建项目。
+2. 在 Project Settings > API 中复制 `Project URL` 和 `anon public` key。
+3. 本地开发时创建 `.env.local`：
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+4. GitHub Pages 自动构建时，在 GitHub 仓库 Settings > Secrets and variables > Actions 添加：
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+
+5. 在 Supabase Authentication > URL Configuration 中设置：
+   - Site URL: `https://zitaodeng07-hub.github.io/balance/`
+   - Redirect URLs: `https://zitaodeng07-hub.github.io/balance/**`
+
+未配置 Supabase 时，应用仍可正常使用，只是登录面板会显示“未配置”，工资配置继续保存在本机浏览器。
