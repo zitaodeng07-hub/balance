@@ -138,6 +138,7 @@ function BalanceApp() {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authMessage, setAuthMessage] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
   const lastCoinStepRef = useRef(0);
   const coinIdRef = useRef(0);
   const audioContextRef = useRef<CoinAudioContext | null>(null);
@@ -203,6 +204,7 @@ function BalanceApp() {
 
   useEffect(() => {
     if (!supabase) {
+      setAuthReady(true);
       return undefined;
     }
 
@@ -210,11 +212,13 @@ function BalanceApp() {
     void supabase.auth.getSession().then(({ data }) => {
       if (active) {
         setSession(data.session);
+        setAuthReady(true);
       }
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
+      setAuthReady(true);
       setAuthMessage('');
     });
 
@@ -247,7 +251,8 @@ function BalanceApp() {
   }, []);
 
   const metrics = useMemo(() => getSalaryMetrics(profile, now), [now, profile]);
-  const sessionElapsed = isRunning ? pausedElapsed + Date.now() - sessionStartedAt : pausedElapsed;
+  const canUseApp = !isSupabaseConfigured || Boolean(session);
+  const sessionElapsed = canUseApp && isRunning ? pausedElapsed + Date.now() - sessionStartedAt : pausedElapsed;
   const sessionIncome = sessionElapsed * metrics.millisecondIncome;
   const coffeeMinutes = Math.max(Math.ceil(18 / Math.max(metrics.minuteIncome, 0.0001)), 1);
   const nextMilestone = Math.ceil(metrics.earnedToday / 50) * 50 + 50;
@@ -255,7 +260,7 @@ function BalanceApp() {
   const milestoneMinutes = Math.max(Math.ceil(milestoneGap / Math.max(metrics.minuteIncome, 0.0001)), 1);
 
   useEffect(() => {
-    if (!isRunning || sessionIncome <= 0) {
+    if (!canUseApp || !isRunning || sessionIncome <= 0) {
       return;
     }
 
@@ -278,7 +283,7 @@ function BalanceApp() {
     window.setTimeout(() => {
       setCoins((current) => current.filter((coin) => coin.id !== nextCoin.id));
     }, 2200);
-  }, [isRunning, sessionIncome]);
+  }, [canUseApp, isRunning, sessionIncome]);
 
   function toggleRunning() {
     if (isRunning) {
@@ -394,14 +399,23 @@ function BalanceApp() {
     setAuthBusy(true);
     setAuthMessage('');
     const credentials = { email: authEmail.trim(), password: authPassword };
-    const { error } = authMode === 'login'
+    const { data, error } = authMode === 'login'
       ? await supabase.auth.signInWithPassword(credentials)
       : await supabase.auth.signUp(credentials);
 
     if (error) {
-      setAuthMessage(error.message);
+      const message = error.message.toLowerCase();
+      if (message.includes('invalid login credentials')) {
+        setAuthMessage('该用户未注册，请先注册；如果已注册，请检查密码。');
+      } else if (message.includes('email not confirmed')) {
+        setAuthMessage('请先完成邮箱验证，再登录。');
+      } else {
+        setAuthMessage(error.message);
+      }
+    } else if (authMode === 'signup' && data.user?.identities?.length === 0) {
+      setAuthMessage('该邮箱已经注册，请切换到登录。');
     } else {
-      setAuthMessage(authMode === 'login' ? '登录成功。' : '注册成功，请按 Supabase 邮件确认设置继续。');
+      setAuthMessage(authMode === 'login' ? '登录成功。' : '注册成功。若系统发送验证邮件，请先验证后再登录。');
       setAuthPassword('');
     }
     setAuthBusy(false);
@@ -481,6 +495,8 @@ function BalanceApp() {
 
           {!isSupabaseConfigured ? (
             <p className="auth-note">配置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY 后启用注册/登录；当前继续使用本地数据。</p>
+          ) : !authReady ? (
+            <p className="auth-note">正在检查登录状态...</p>
           ) : session ? (
             <div className="auth-signed-in">
               <span>{session.user.email}</span>
@@ -500,67 +516,75 @@ function BalanceApp() {
           {authMessage && <p className="auth-note">{authMessage}</p>}
         </section>
 
-        <section className="hero panel">
-          <div className="hero-meta">
-            <span>本次专注已赚</span>
-            <strong>{metrics.currentTimeLabel}</strong>
-          </div>
-          <div className="money-flow">{formatCurrency(sessionIncome, profile.currency, DISPLAY_DIGITS)}</div>
-          <div className="flow-subtitle">
-            本次专注 {formatDuration(sessionElapsed)} · 每秒 +{formatCurrency(metrics.secondIncome, profile.currency, DISPLAY_DIGITS)}
-          </div>
-
-          <div className="progress-track" aria-label="今日工作进度">
-            <div className="progress-fill" style={{ width: `${metrics.progress * 100}%` }} />
-          </div>
-          <div className="progress-meta">
-            <span>{profile.payMode === 'work' ? '工作时段进度' : '自然日进度'}</span>
-            <strong>{Math.round(metrics.progress * 100)}%</strong>
-          </div>
-
-          <div className="hero-actions">
-            <button className="primary-action" onClick={toggleRunning}>{isRunning ? '暂停专注' : '继续专注'}</button>
-            <button className="ghost-action" onClick={resetSession}>重置会话</button>
-          </div>
-        </section>
-
-        {!isStandalone && (
-          <section className="install-tip panel">
-            <span>想像 App 一样使用？Safari 分享按钮 → 添加到主屏幕。</span>
+        {!canUseApp ? (
+          <section className="locked-panel panel">
+            <p className="eyebrow">Locked</p>
+            <h2>请先注册或登录</h2>
+            <p>为保护个人收入数据，登录前不能使用实时收入、工资设置和本地数据功能。新用户请先注册，再登录。</p>
           </section>
-        )}
+        ) : (
+          <>
+            <section className="hero panel">
+              <div className="hero-meta">
+                <span>本次专注已赚</span>
+                <strong>{metrics.currentTimeLabel}</strong>
+              </div>
+              <div className="money-flow">{formatCurrency(sessionIncome, profile.currency, DISPLAY_DIGITS)}</div>
+              <div className="flow-subtitle">
+                本次专注 {formatDuration(sessionElapsed)} · 每秒 +{formatCurrency(metrics.secondIncome, profile.currency, DISPLAY_DIGITS)}
+              </div>
 
-        <section className="quick-controls panel" aria-label="快捷设置">
-          <button className={soundEnabled ? 'active' : ''} onClick={() => setSoundEnabled((current) => !current)}>
-            金币音效 {soundEnabled ? '开' : '关'}
-          </button>
-          <button className={silentMode ? 'active' : ''} onClick={() => setSilentMode((current) => !current)}>
-            静音模式 {silentMode ? '开' : '关'}
-          </button>
-          <button onClick={testCoinSound}>测试音效</button>
-        </section>
+              <div className="progress-track" aria-label="今日工作进度">
+                <div className="progress-fill" style={{ width: `${metrics.progress * 100}%` }} />
+              </div>
+              <div className="progress-meta">
+                <span>{profile.payMode === 'work' ? '工作时段进度' : '自然日进度'}</span>
+                <strong>{Math.round(metrics.progress * 100)}%</strong>
+              </div>
 
-        <section className="metric-strip">
-          <MetricCard label="今日已赚" value={formatCurrency(metrics.earnedToday, profile.currency, DISPLAY_DIGITS)} hint={`进度 ${Math.round(metrics.progress * 100)}%`} />
-          <MetricCard label="本月已计" value={formatCurrency(metrics.earnedThisMonth, profile.currency, DISPLAY_DIGITS)} hint={`预计 ${formatCurrency(metrics.projectedMonth, profile.currency, 0)}`} />
-          <MetricCard label="时薪" value={formatCurrency(metrics.hourIncome, profile.currency, DISPLAY_DIGITS)} hint={`分钟 ${formatCurrency(metrics.minuteIncome, profile.currency, DISPLAY_DIGITS)}`} />
-          <MetricCard label="计薪日" value={`${metrics.workdayCount} 天`} hint={`本月 ${metrics.daysInMonth} 天`} />
-        </section>
+              <div className="hero-actions">
+                <button className="primary-action" onClick={toggleRunning}>{isRunning ? '暂停专注' : '继续专注'}</button>
+                <button className="ghost-action" onClick={resetSession}>重置会话</button>
+              </div>
+            </section>
 
-        <section className="motivation panel">
-          <div>
-            <p className="eyebrow">轻激励</p>
-            <h2>再专注 {coffeeMinutes} 分钟 = 一杯美式</h2>
-            <p>距离下一个 {formatCurrency(nextMilestone, profile.currency, 0)} 里程碑，预计还需要 {milestoneMinutes} 分钟。</p>
-          </div>
-          <div className="chip-row">
-              <span>{session ? '已登录账户' : '工资仍本地保存'}</span>
-            <span>前台高频刷新</span>
-            <span>后台恢复重算</span>
-          </div>
-        </section>
+            {!isStandalone && (
+              <section className="install-tip panel">
+                <span>想像 App 一样使用？Safari 分享按钮 → 添加到主屏幕。</span>
+              </section>
+            )}
 
-        <section className="settings panel">
+            <section className="quick-controls panel" aria-label="快捷设置">
+              <button className={soundEnabled ? 'active' : ''} onClick={() => setSoundEnabled((current) => !current)}>
+                金币音效 {soundEnabled ? '开' : '关'}
+              </button>
+              <button className={silentMode ? 'active' : ''} onClick={() => setSilentMode((current) => !current)}>
+                静音模式 {silentMode ? '开' : '关'}
+              </button>
+              <button onClick={testCoinSound}>测试音效</button>
+            </section>
+
+            <section className="metric-strip">
+              <MetricCard label="今日已赚" value={formatCurrency(metrics.earnedToday, profile.currency, DISPLAY_DIGITS)} hint={`进度 ${Math.round(metrics.progress * 100)}%`} />
+              <MetricCard label="本月已计" value={formatCurrency(metrics.earnedThisMonth, profile.currency, DISPLAY_DIGITS)} hint={`预计 ${formatCurrency(metrics.projectedMonth, profile.currency, 0)}`} />
+              <MetricCard label="时薪" value={formatCurrency(metrics.hourIncome, profile.currency, DISPLAY_DIGITS)} hint={`分钟 ${formatCurrency(metrics.minuteIncome, profile.currency, DISPLAY_DIGITS)}`} />
+              <MetricCard label="计薪日" value={`${metrics.workdayCount} 天`} hint={`本月 ${metrics.daysInMonth} 天`} />
+            </section>
+
+            <section className="motivation panel">
+              <div>
+                <p className="eyebrow">轻激励</p>
+                <h2>再专注 {coffeeMinutes} 分钟 = 一杯美式</h2>
+                <p>距离下一个 {formatCurrency(nextMilestone, profile.currency, 0)} 里程碑，预计还需要 {milestoneMinutes} 分钟。</p>
+              </div>
+              <div className="chip-row">
+                <span>已登录账户</span>
+                <span>前台高频刷新</span>
+                <span>后台恢复重算</span>
+              </div>
+            </section>
+
+            <section className="settings panel">
           <div className="section-heading">
             <div>
               <p className="eyebrow">Settings</p>
@@ -676,13 +700,15 @@ function BalanceApp() {
 
             <button className="danger-action" onClick={clearLocalData}>清空本地数据</button>
           </div>
-        </section>
+            </section>
+          </>
+        )}
 
         <p className="disclaimer">金额仅用于个人收入可视化估算，不替代工资单、税务申报或公司结算结果。</p>
         <a className="debug-link" href="./debug.html">诊断</a>
       </main>
 
-      {showOnboarding && (
+      {canUseApp && showOnboarding && (
         <div className="onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
           <section className="onboarding-card panel">
             <p className="eyebrow">首次使用</p>

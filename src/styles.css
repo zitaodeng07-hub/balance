@@ -381,6 +381,22 @@ h2 {
   gap: 14px;
 }
 
+.locked-panel {
+  padding: 20px;
+  border-color: rgba(248, 113, 113, 0.22);
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.18), rgba(15, 23, 42, 0.76));
+}
+
+.locked-panel h2 {
+  margin-bottom: 10px;
+}
+
+.locked-panel p:last-child {
+  margin-bottom: 0;
+  color: rgba(226, 232, 240, 0.74);
+  line-height: 1.65;
+}
+
 .auth-heading span,
 .auth-note,
 .auth-signed-in span {
