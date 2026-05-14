@@ -415,7 +415,7 @@ function BalanceApp() {
     if (error) {
       const message = error.message.toLowerCase();
       if (message.includes('invalid login credentials')) {
-        setAuthMessage('该用户未注册，请先注册；如果已注册，请检查密码。');
+        setAuthMessage('登录失败。请确认已点击最新验证邮件，并重新输入注册时的密码。若是在另一台设备完成验证，请刷新本页后再登录。');
       } else if (message.includes('email not confirmed')) {
         setAuthMessage('请先完成邮箱验证，再登录。');
       } else {
