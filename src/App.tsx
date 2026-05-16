@@ -18,12 +18,15 @@ declare global {
   }
 }
 
-const STORAGE_KEY = 'balance-salary-profile-v2';
-const SESSION_KEY = 'balance-session-state-v2';
-const PREFERENCES_KEY = 'balance-preferences-v1';
+const STORAGE_KEY = 'salary-profile-v2';
+const SESSION_KEY = 'session-state-v2';
+const PREFERENCES_KEY = 'preferences-v1';
 const DISPLAY_DIGITS = 3;
 const COIN_STEP = 0.02;
 const weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
+
+type StorageKeys = { profile: string; session: string; preferences: string };
+type AuthMode = 'login' | 'signup' | 'recovery';
 
 const defaultProfile: SalaryProfile = {
   monthlySalary: 15000,
@@ -116,6 +119,41 @@ function getAuthRedirectUrl() {
   return new URL('./', window.location.href).href;
 }
 
+function getStorageKeys(scope: string): StorageKeys {
+  return {
+    profile: `balance:${scope}:${STORAGE_KEY}`,
+    session: `balance:${scope}:${SESSION_KEY}`,
+    preferences: `balance:${scope}:${PREFERENCES_KEY}`,
+  };
+}
+
+function getAuthCallbackMessage() {
+  const sources = [window.location.search, window.location.hash ? window.location.hash.slice(1) : ''];
+
+  for (const source of sources) {
+    const params = new URLSearchParams(source.startsWith('?') ? source.slice(1) : source);
+    const error = params.get('error') || params.get('error_code');
+    if (!error) continue;
+
+    const description = params.get('error_description') || params.get('error_message') || '';
+    const text = decodeURIComponent(description.replace(/\+/g, ' ')).toLowerCase();
+    if (text.includes('expired') || text.includes('invalid')) {
+      return '验证链接已失效或已被使用。请重新发送验证邮件后，再点击最新邮件中的链接。';
+    }
+
+    return description ? decodeURIComponent(description.replace(/\+/g, ' ')) : '邮箱验证失败，请重新发送验证邮件后再试。';
+  }
+
+  return '';
+}
+
+function cleanAuthErrorFromUrl() {
+  const hasAuthError = window.location.search.includes('error') || window.location.hash.includes('error');
+  if (!hasAuthError) return;
+
+  window.history.replaceState({}, document.title, new URL('./', window.location.href).href);
+}
+
 export default function App() {
   return (
     <AppErrorBoundary>
@@ -139,38 +177,75 @@ function BalanceApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [authMessage, setAuthMessage] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
+  const [storageLoaded, setStorageLoaded] = useState(false);
+  const [recoveryPassword, setRecoveryPassword] = useState('');
   const lastCoinStepRef = useRef(0);
   const coinIdRef = useRef(0);
   const audioContextRef = useRef<CoinAudioContext | null>(null);
+  const storageKeys = useMemo(() => {
+    if (!isSupabaseConfigured) {
+      return getStorageKeys('local');
+    }
+
+    return session?.user.id ? getStorageKeys(`user:${session.user.id}`) : null;
+  }, [session?.user.id]);
 
   useEffect(() => {
     setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
+  }, []);
 
-    const stored = readStoredValue(STORAGE_KEY);
-    const session = readStoredValue(SESSION_KEY);
-    const preferences = readStoredValue(PREFERENCES_KEY);
+  useEffect(() => {
+    if (!storageKeys) {
+      setStorageLoaded(false);
+      setProfile(defaultProfile);
+      setTheme('neon');
+      setIsRunning(true);
+      setSessionStartedAt(Date.now());
+      setPausedElapsed(0);
+      setCoins([]);
+      setSoundEnabled(true);
+      setSilentMode(false);
+      setShowOnboarding(false);
+      lastCoinStepRef.current = 0;
+      return;
+    }
+
+    setStorageLoaded(false);
+    setProfile(defaultProfile);
+    setTheme('neon');
+    setIsRunning(true);
+    setSessionStartedAt(Date.now());
+    setPausedElapsed(0);
+    setCoins([]);
+    setSoundEnabled(true);
+    setSilentMode(false);
+    lastCoinStepRef.current = 0;
+
+    const stored = readStoredValue(storageKeys.profile);
+    const storedSession = readStoredValue(storageKeys.session);
+    const preferences = readStoredValue(storageKeys.preferences);
 
     if (stored) {
       try {
         setProfile((current) => ({ ...current, ...JSON.parse(stored) }));
       } catch {
-        removeStoredValue(STORAGE_KEY);
+        removeStoredValue(storageKeys.profile);
       }
     }
 
-    if (session) {
+    if (storedSession) {
       try {
-        const parsed = JSON.parse(session) as Partial<{ theme: Theme; isRunning: boolean; sessionStartedAt: number; pausedElapsed: number }>;
+        const parsed = JSON.parse(storedSession) as Partial<{ theme: Theme; isRunning: boolean; sessionStartedAt: number; pausedElapsed: number }>;
         if (parsed.theme) setTheme(parsed.theme);
         if (typeof parsed.isRunning === 'boolean') setIsRunning(parsed.isRunning);
         if (typeof parsed.sessionStartedAt === 'number') setSessionStartedAt(parsed.sessionStartedAt);
         if (typeof parsed.pausedElapsed === 'number') setPausedElapsed(parsed.pausedElapsed);
       } catch {
-        removeStoredValue(SESSION_KEY);
+        removeStoredValue(storageKeys.session);
       }
     }
 
@@ -181,25 +256,33 @@ function BalanceApp() {
         if (typeof parsed.silentMode === 'boolean') setSilentMode(parsed.silentMode);
         setShowOnboarding(parsed.hasSeenOnboarding !== true);
       } catch {
-        removeStoredValue(PREFERENCES_KEY);
+        removeStoredValue(storageKeys.preferences);
         setShowOnboarding(true);
       }
     } else {
       setShowOnboarding(true);
     }
-  }, []);
+
+    setStorageLoaded(true);
+  }, [storageKeys]);
 
   useEffect(() => {
-    writeStoredValue(STORAGE_KEY, profile);
-  }, [profile]);
+    if (storageKeys && storageLoaded) {
+      writeStoredValue(storageKeys.profile, profile);
+    }
+  }, [profile, storageKeys, storageLoaded]);
 
   useEffect(() => {
-    writeStoredValue(SESSION_KEY, { theme, isRunning, sessionStartedAt, pausedElapsed });
-  }, [theme, isRunning, sessionStartedAt, pausedElapsed]);
+    if (storageKeys && storageLoaded) {
+      writeStoredValue(storageKeys.session, { theme, isRunning, sessionStartedAt, pausedElapsed });
+    }
+  }, [theme, isRunning, sessionStartedAt, pausedElapsed, storageKeys, storageLoaded]);
 
   useEffect(() => {
-    writeStoredValue(PREFERENCES_KEY, { soundEnabled, silentMode, hasSeenOnboarding: !showOnboarding });
-  }, [soundEnabled, silentMode, showOnboarding]);
+    if (storageKeys && storageLoaded) {
+      writeStoredValue(storageKeys.preferences, { soundEnabled, silentMode, hasSeenOnboarding: !showOnboarding });
+    }
+  }, [soundEnabled, silentMode, showOnboarding, storageKeys, storageLoaded]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), isRunning ? 50 : 500);
@@ -213,6 +296,12 @@ function BalanceApp() {
     }
 
     let active = true;
+    const callbackMessage = getAuthCallbackMessage();
+    if (callbackMessage) {
+      setAuthMessage(callbackMessage);
+      cleanAuthErrorFromUrl();
+    }
+
     void supabase.auth.getSession().then(({ data }) => {
       if (active) {
         setSession(data.session);
@@ -220,10 +309,18 @@ function BalanceApp() {
       }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
       setAuthReady(true);
-      setAuthMessage('');
+      if (event === 'PASSWORD_RECOVERY') {
+        setAuthMode('recovery');
+        setAuthMessage('请设置新密码，保存后即可用新密码登录。');
+        return;
+      }
+
+      if (!callbackMessage) {
+        setAuthMessage('');
+      }
     });
 
     return () => {
@@ -394,62 +491,7 @@ function BalanceApp() {
     setShowOnboarding(false);
   }
 
-  async function handleAuthSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!supabase || authBusy) {
-      return;
-    }
-
-    setAuthBusy(true);
-    setAuthMessage('');
-    const credentials = { email: authEmail.trim(), password: authPassword };
-    const { data, error } = authMode === 'login'
-      ? await supabase.auth.signInWithPassword(credentials)
-      : await supabase.auth.signUp({
-        ...credentials,
-        options: {
-          emailRedirectTo: getAuthRedirectUrl(),
-        },
-      });
-
-    if (error) {
-      const message = error.message.toLowerCase();
-      if (message.includes('invalid login credentials')) {
-        setAuthMessage('登录失败。请确认已点击最新验证邮件，并重新输入注册时的密码。若是在另一台设备完成验证，请刷新本页后再登录。');
-      } else if (message.includes('email not confirmed')) {
-        setAuthMessage('请先完成邮箱验证，再登录。');
-      } else {
-        setAuthMessage(error.message);
-      }
-    } else if (authMode === 'signup' && data.user?.identities?.length === 0) {
-      setAuthMessage('该邮箱已经注册，请切换到登录。');
-    } else {
-      setAuthMessage(authMode === 'login' ? '登录成功。' : '注册成功。若系统发送验证邮件，请先验证后再登录。');
-      setAuthPassword('');
-    }
-    setAuthBusy(false);
-  }
-
-  async function signOut() {
-    if (!supabase || authBusy) {
-      return;
-    }
-
-    setAuthBusy(true);
-    const { error } = await supabase.auth.signOut();
-    setAuthMessage(error ? error.message : '已退出登录。');
-    setAuthBusy(false);
-  }
-
-  function clearLocalData() {
-    const confirmed = window.confirm('确定清空本地保存的工资、主题、专注状态和偏好吗？此操作不会影响 Supabase 账户。');
-    if (!confirmed) {
-      return;
-    }
-
-    removeStoredValue(STORAGE_KEY);
-    removeStoredValue(SESSION_KEY);
-    removeStoredValue(PREFERENCES_KEY);
+  function resetLocalState() {
     setProfile(defaultProfile);
     setTheme('neon');
     setIsRunning(true);
@@ -460,6 +502,156 @@ function BalanceApp() {
     setSilentMode(false);
     setShowOnboarding(true);
     lastCoinStepRef.current = 0;
+  }
+
+  function removeLocalData(keys: StorageKeys | null) {
+    if (!keys) return;
+
+    removeStoredValue(keys.profile);
+    removeStoredValue(keys.session);
+    removeStoredValue(keys.preferences);
+  }
+
+  async function handleAuthSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || authBusy) {
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthMessage('');
+
+    try {
+      if (authMode === 'recovery') {
+        const { error } = await supabase.auth.updateUser({ password: recoveryPassword });
+        if (error) {
+          setAuthMessage(error.message);
+        } else {
+          setAuthMessage('新密码已保存。你现在可以继续使用 Balance。');
+          setRecoveryPassword('');
+          setAuthMode('login');
+        }
+        return;
+      }
+
+      const credentials = { email: authEmail.trim(), password: authPassword };
+      const { data, error } = authMode === 'login'
+        ? await supabase.auth.signInWithPassword(credentials)
+        : await supabase.auth.signUp({
+          ...credentials,
+          options: {
+            emailRedirectTo: getAuthRedirectUrl(),
+          },
+        });
+
+      if (error) {
+        const message = error.message.toLowerCase();
+        if (message.includes('invalid login credentials')) {
+          setAuthMessage('登录失败。请确认已点击最新验证邮件，并重新输入注册时的密码。若是在另一台设备完成验证，请刷新本页后再登录。');
+        } else if (message.includes('email not confirmed')) {
+          setAuthMessage('请先完成邮箱验证，再登录。');
+        } else {
+          setAuthMessage(error.message);
+        }
+      } else if (authMode === 'signup' && data.user?.identities?.length === 0) {
+        setAuthMessage('如果该邮箱已经注册，请切换到登录；如果未收到验证邮件，可以点击“重发验证邮件”。');
+      } else {
+        setAuthMessage(authMode === 'login' ? '登录成功。' : '注册成功。请到邮箱点击最新验证邮件，再回到这里登录。');
+        setAuthPassword('');
+      }
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : '认证请求失败，请稍后再试。');
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function sendPasswordResetEmail() {
+    if (!supabase || authBusy) {
+      return;
+    }
+
+    const email = authEmail.trim();
+    if (!email) {
+      setAuthMessage('请先输入邮箱，再请求重置密码邮件。');
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthMessage('');
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: getAuthRedirectUrl() });
+      setAuthMessage(error ? error.message : '如果该邮箱可用，重置密码邮件会发送到你的邮箱。请点击最新邮件中的链接。');
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : '重置密码邮件发送失败，请稍后再试。');
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function resendVerificationEmail() {
+    if (!supabase || authBusy) {
+      return;
+    }
+
+    const email = authEmail.trim();
+    if (!email) {
+      setAuthMessage('请先输入邮箱，再重发验证邮件。');
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthMessage('');
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: { emailRedirectTo: getAuthRedirectUrl() },
+      });
+      setAuthMessage(error ? error.message : '如果该邮箱需要验证，新的验证邮件会发送到你的邮箱。请点击最新邮件中的链接。');
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : '验证邮件发送失败，请稍后再试。');
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function signOut(clearDeviceData = false) {
+    if (!supabase || authBusy) {
+      return;
+    }
+
+    const keys = storageKeys;
+    if (clearDeviceData) {
+      const confirmed = window.confirm('确定退出登录，并清除这个账号保存在本机的工资、主题和专注状态吗？云端 Supabase 账号不会被删除。');
+      if (!confirmed) return;
+    }
+
+    setAuthBusy(true);
+    try {
+      if (clearDeviceData) {
+        removeLocalData(keys);
+        resetLocalState();
+      }
+
+      const { error } = await supabase.auth.signOut();
+      setAuthMessage(error ? error.message : clearDeviceData ? '已退出登录，并清除本机数据。' : '已退出登录。');
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : '退出登录失败，请稍后再试。');
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  function clearLocalData() {
+    const confirmed = window.confirm('确定清空当前账号保存在本机的工资、主题、专注状态和偏好吗？此操作不会影响 Supabase 账户。');
+    if (!confirmed) {
+      return;
+    }
+
+    removeLocalData(storageKeys);
+    resetLocalState();
+    setAuthMessage('已清空当前账号保存在本机的数据。');
   }
 
   return (
@@ -506,20 +698,51 @@ function BalanceApp() {
             <p className="auth-note">配置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY 后启用注册/登录；当前继续使用本地数据。</p>
           ) : !authReady ? (
             <p className="auth-note">正在检查登录状态...</p>
+          ) : authMode === 'recovery' ? (
+            <form className="auth-form" onSubmit={handleAuthSubmit}>
+              <input
+                type="password"
+                placeholder="新密码（至少 6 位）"
+                value={recoveryPassword}
+                onChange={(event) => setRecoveryPassword(event.target.value)}
+                minLength={6}
+                autoComplete="new-password"
+                aria-label="新密码"
+                required
+              />
+              <button className="primary-action" disabled={authBusy}>{authBusy ? '处理中...' : '保存新密码'}</button>
+              <button type="button" className="ghost-action" onClick={() => setAuthMode('login')} disabled={authBusy}>返回登录</button>
+            </form>
           ) : session ? (
             <div className="auth-signed-in">
               <span>{session.user.email}</span>
-              <button className="ghost-action" onClick={signOut} disabled={authBusy}>退出登录</button>
+              <div className="auth-actions compact">
+                <button className="ghost-action" onClick={() => signOut(false)} disabled={authBusy}>退出</button>
+                <button className="danger-action inline" onClick={() => signOut(true)} disabled={authBusy}>退出并清本机</button>
+              </div>
             </div>
           ) : (
             <form className="auth-form" onSubmit={handleAuthSubmit}>
               <div className="segmented auth-mode">
-                <button type="button" className={authMode === 'login' ? 'active' : ''} onClick={() => setAuthMode('login')}>登录</button>
-                <button type="button" className={authMode === 'signup' ? 'active' : ''} onClick={() => setAuthMode('signup')}>注册</button>
+                <button type="button" className={authMode === 'login' ? 'active' : ''} onClick={() => setAuthMode('login')} aria-pressed={authMode === 'login'}>登录</button>
+                <button type="button" className={authMode === 'signup' ? 'active' : ''} onClick={() => setAuthMode('signup')} aria-pressed={authMode === 'signup'}>注册</button>
               </div>
-              <input type="email" placeholder="邮箱" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
-              <input type="password" placeholder="密码（至少 6 位）" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} minLength={6} required />
+              <input type="email" placeholder="邮箱" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} autoComplete="email" aria-label="邮箱" required />
+              <input
+                type="password"
+                placeholder="密码（至少 6 位）"
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                minLength={6}
+                autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                aria-label="密码"
+                required
+              />
               <button className="primary-action" disabled={authBusy}>{authBusy ? '处理中...' : authMode === 'login' ? '登录' : '注册'}</button>
+              <div className="auth-actions">
+                <button type="button" className="ghost-action" onClick={sendPasswordResetEmail} disabled={authBusy}>忘记密码</button>
+                <button type="button" className="ghost-action" onClick={resendVerificationEmail} disabled={authBusy}>重发验证邮件</button>
+              </div>
             </form>
           )}
           {authMessage && <p className="auth-note">{authMessage}</p>}
@@ -543,7 +766,7 @@ function BalanceApp() {
                 本次专注 {formatDuration(sessionElapsed)} · 每秒 +{formatCurrency(metrics.secondIncome, profile.currency, DISPLAY_DIGITS)}
               </div>
 
-              <div className="progress-track" aria-label="今日工作进度">
+              <div className="progress-track" role="progressbar" aria-label="今日工作进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(metrics.progress * 100)}>
                 <div className="progress-fill" style={{ width: `${metrics.progress * 100}%` }} />
               </div>
               <div className="progress-meta">

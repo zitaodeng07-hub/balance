@@ -414,6 +414,17 @@ h2 {
   gap: 10px;
 }
 
+.auth-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.auth-actions.compact {
+  flex: 0 0 auto;
+  min-width: 180px;
+}
+
 .auth-mode {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -430,6 +441,22 @@ h2 {
   background: rgba(248, 113, 113, 0.12);
   color: #fecaca;
   border: 1px solid rgba(248, 113, 113, 0.24);
+}
+
+.danger-action.inline {
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
+.primary-action:focus-visible,
+.ghost-action:focus-visible,
+.danger-action:focus-visible,
+.auth-form button:focus-visible,
+.quick-controls button:focus-visible,
+.segmented button:focus-visible,
+.weekday-row button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .primary-action:active,
